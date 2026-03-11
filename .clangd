@@ -1,0 +1,8 @@
+CompileFlags:
+  Add: 
+    - "-I./ServerCore"
+    - "-I./GameServer"
+    - "-I../ServerCore"
+    - "-std=c++17"
+    - "-D_DEBUG"
+    - "-DUNICODE"
