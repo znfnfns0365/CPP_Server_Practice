@@ -31,7 +31,3 @@ void StompAllocator::Release(void* ptr) {
 	const int64 baseAddress = address - (address % PAGE_SIZE);
 	::VirtualFree(reinterpret_cast<void*>(baseAddress), 0, MEM_RELEASE);
 }
-
-/*-------------------------
-	STL Allocator
--------------------------*/
