@@ -21,11 +21,16 @@ void HandleError(const char* funcName) {
 const int32 BUFFER_SIZE = 1000;
 
 struct Session {
+	WSAOVERLAPPED overlapped = {};
 	SOCKET socket;
 	char recvBuffer[BUFFER_SIZE] = {};
 	int32 recvBytes = 0;
-	WSAOVERLAPPED overlapped = {};
 };
+
+void CALLBACK RecvCallback(DWORD dwError, DWORD recvLen, LPWSAOVERLAPPED lpOverlapped, DWORD dwFlags) {
+	cout << "Data Recv Len Callback = " << recvLen << endl;
+	Session* session = (Session*)lpOverlapped;
+}
 
 int main() {
 	WSADATA wsaData;
@@ -72,7 +77,8 @@ int main() {
 			return 0;
 		}
 
-		Session session = Session{clientSocket};
+		Session session = Session{};
+		session.socket = clientSocket;
 		WSAEVENT wsaEvent = ::WSACreateEvent();
 		session.overlapped.hEvent = wsaEvent;
 
@@ -88,19 +94,23 @@ int main() {
 			DWORD flags = 0;
 			// 비동기 recv
 			// 수동 초기화 안 해주면 WSARecv 호출전에 자동으로 신호 모두 꺼버림
-			if (::WSARecv(clientSocket, &wsaBuf, 1, &recvBytes, &flags, &session.overlapped, nullptr) == SOCKET_ERROR) {
+			if (::WSARecv(clientSocket, &wsaBuf, 1, &recvBytes, &flags, &session.overlapped, RecvCallback) ==
+				SOCKET_ERROR) {
 				if (::WSAGetLastError() == WSA_IO_PENDING) {
 					// Pending (recv 지연중)
-					// 완료 통지 방법 >> 이벤트! (이벤트 블로킹 함수로 데이터 기다림)
-					::WSAWaitForMultipleEvents(1, &wsaEvent, true, WSA_INFINITE, FALSE);
-					::WSAGetOverlappedResult(session.socket, &session.overlapped, &recvBytes, false, &flags);
+					// 스레드를 Alertable Wait 상태로 바꿔줘야 함
+					// ::WSAWaitForMultipleEvents(1, &wsaEvent, true, WSA_INFINITE, TRUE);
+					::SleepEx(INFINITE, TRUE);
+					// 두 함수 모두 APC queue에 들어온 콜백 함수를 기다렸다가 호출함
+					// APC queue는 각 스레드마다 독립적으로 존재함
+					// 모든 콜백 함수를 호출하여 APC queue를 비운 뒤, 스레드는 Alertable Wait 상태에서 빠져나옴
 				} else {
 					// TODO: 문제 있는 상황
 					break;
 				}
+			} else {
+				cout << "Recv Data! Len =" << recvBytes << endl;
 			}
-
-			cout << "Recv Data! Len =" << recvBytes << endl;
 		}
 
 		::closesocket(session.socket);
