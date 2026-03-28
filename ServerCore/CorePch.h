@@ -11,4 +11,10 @@
 #include <Windows.h>
 using namespace std;
 
+#include <winSock2.h>
+#include <mswsock.h>
+#include <WS2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+
 #include "Lock.h"
+#include "Memory.h"

@@ -13,6 +13,9 @@
     <Filter Include="Memory">
       <UniqueIdentifier>{6a18376a-457a-456b-b152-f8337e58c999}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Network">
+      <UniqueIdentifier>{763101ec-b10b-436a-8e9a-4a8832ac883b}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CorePch.h">
@@ -54,6 +57,12 @@
     <ClInclude Include="Container.h">
       <Filter>Memory</Filter>
     </ClInclude>
+    <ClInclude Include="NetAddress.h">
+      <Filter>Network</Filter>
+    </ClInclude>
+    <ClInclude Include="SocketUtils.h">
+      <Filter>Network</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CorePch.cpp">
@@ -85,6 +94,12 @@
     </ClCompile>
     <ClCompile Include="Memory.cpp">
       <Filter>Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="NetAddress.cpp">
+      <Filter>Network</Filter>
+    </ClCompile>
+    <ClCompile Include="SocketUtils.cpp">
+      <Filter>Network</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
