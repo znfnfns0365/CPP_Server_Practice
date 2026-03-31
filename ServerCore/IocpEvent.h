@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Types.h"
-#include "Session.h"
 
 enum class EventType : uint8 {
 	Connect,
@@ -23,7 +22,7 @@ class IocpEvent : public OVERLAPPED {
 public:
 	IocpEvent(EventType type);
 	// virtual 쓰면 안 됨
-	// virtual 때문에 가상 함수 테이블이 Offset 0번에 생기는데
+	// virtual 때문에 가상 함수 테이블(vtable 포인터)이 Offset 0번을 차지하게 됨
 	// 그러면 맨 처음에 있던 OVERLAPPED 구조체가 사라지게 됨
 
 	void Init();

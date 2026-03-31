@@ -1,7 +1,5 @@
 #include "pch.h"
 #include "Listener.h"
-#include <minwinbase.h>
-#include <winSock2.h>
 #include "SocketUtils.h"
 #include "IocpEvent.h"
 #include "Session.h"
@@ -21,6 +19,9 @@ bool Listener::StartAccept(NetAddress netAddr) {
 	_socket = SocketUtils::CreateSocket();
 	if (_socket == INVALID_SOCKET)
 		return false;
+
+	// 이때 Listener 객체를 전달해서 key로 IocpObject(Listener) 전달
+	// 후에 IocpCore::Dispatch에서 이 key를 통해 IocpObject(Listener)를 찾아서 처리
 	if (GIocpCore.Register(this) == false)
 		return false;
 
@@ -43,7 +44,7 @@ bool Listener::StartAccept(NetAddress netAddr) {
 		RegisterAccept(acceptEvent);
 	}
 
-	return false;
+	return true;
 }
 
 void Listener::CloseSocket() {
@@ -52,14 +53,6 @@ void Listener::CloseSocket() {
 
 HANDLE Listener::GetHandle() {
 	return reinterpret_cast<HANDLE>(_socket);
-}
-
-void Listener::Dispatch(IocpEvent* iocpEvent, int32 numOfBytes) {
-	ASSERT_CRASH(iocpEvent->GetType() == EventType::Accept);
-
-	AcceptEvent* acceptEvent = static_cast<AcceptEvent*>(iocpEvent);
-
-	ProcessAccept(acceptEvent);
 }
 
 void Listener::RegisterAccept(AcceptEvent* acceptEvent) {
@@ -80,6 +73,14 @@ void Listener::RegisterAccept(AcceptEvent* acceptEvent) {
 			return;
 		}
 	}
+}
+
+void Listener::Dispatch(IocpEvent* iocpEvent, int32 numOfBytes) {
+	ASSERT_CRASH(iocpEvent->GetType() == EventType::Accept);
+
+	AcceptEvent* acceptEvent = static_cast<AcceptEvent*>(iocpEvent);
+
+	ProcessAccept(acceptEvent);
 }
 
 void Listener::ProcessAccept(AcceptEvent* acceptEvent) {
