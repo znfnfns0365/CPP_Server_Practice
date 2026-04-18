@@ -3,6 +3,7 @@
 #include "SocketUtils.h"
 #include "IocpEvent.h"
 #include "Session.h"
+#include "Service.h"
 
 /*---------------
 	Listener
@@ -15,14 +16,16 @@ Listener::~Listener() {
 	}
 }
 
-bool Listener::StartAccept(NetAddress netAddr) {
+bool Listener::StartAccept(ServerServiceRef service) {
+	_service = service;
+	if (_service == nullptr)
+		return false;
+
 	_socket = SocketUtils::CreateSocket();
 	if (_socket == INVALID_SOCKET)
 		return false;
 
-	// 이때 Listener 객체를 전달해서 key로 IocpObject(Listener) 전달
-	// 후에 IocpCore::Dispatch에서 이 key를 통해 IocpObject(Listener)를 찾아서 처리
-	if (GIocpCore.Register(this) == false)
+	if (service->GetIocpCore()->Register(shared_from_this()) == false)
 		return false;
 
 	if (SocketUtils::SetReuseAddress(_socket, true) == false)
@@ -31,13 +34,13 @@ bool Listener::StartAccept(NetAddress netAddr) {
 	if (SocketUtils::SetLinger(_socket, 1, 0) == false)
 		return false;
 
-	if (SocketUtils::Bind(_socket, netAddr) == false)
+	if (SocketUtils::Bind(_socket, _service->GetNetAddress()) == false)
 		return false;
 
 	if (SocketUtils::Listen(_socket) == false)
 		return false;
 
-	const int32 acceptCount = 1;
+	const int32 acceptCount = _service->GetMaxSessionCount();
 	for (int32 i = 0; i < acceptCount; i++) {
 		AcceptEvent* acceptEvent = xnew<AcceptEvent>();
 		acceptEvent->owner = shared_from_this();
@@ -57,7 +60,9 @@ HANDLE Listener::GetHandle() {
 }
 
 void Listener::RegisterAccept(AcceptEvent* acceptEvent) {
-	SessionRef session = MakeShared<Session>();
+	SessionRef session = _service->CreateSession();	 // IOCP에 등록까지 해버림
+	// 나중에 컨텐츠를 만들면서 sessionFactory를 직접 설정하고 Create하면 원하는 Session을 만들 수 있음
+
 	acceptEvent->Init();
 	acceptEvent->session = session;
 

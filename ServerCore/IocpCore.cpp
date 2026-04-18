@@ -3,9 +3,6 @@
 #include "IocpEvent.h"
 #include <ioapiset.h>
 
-// TEMP(임시)
-IocpCore GIocpCore;
-
 /*-----------------
 	IocpCore
 ------------------*/
@@ -19,7 +16,7 @@ IocpCore::~IocpCore() {
 	::CloseHandle(_iocpHandle);
 }
 
-bool IocpCore::Register(IocpObject* iocpObject) {
+bool IocpCore::Register(IocpObjectRef iocpObject) {
 	return ::CreateIoCompletionPort(iocpObject->GetHandle(), _iocpHandle,
 									/*key*/ 0, 0);
 }
@@ -30,11 +27,11 @@ bool IocpCore::Dispatch(uint32 timeoutMs) {
 	ULONG_PTR key = 0;
 	IocpEvent* iocpEvent = nullptr;
 
-	// 원래는 refrence Counting을 사용하는데, 여기서는 그냥 포인터를 사용
 	if (::GetQueuedCompletionStatus(_iocpHandle, OUT & numOfBytes, OUT & key,
 									OUT reinterpret_cast<LPOVERLAPPED*>(&iocpEvent), timeoutMs)) {
 		IocpObjectRef iocpObject = iocpEvent->owner;
 		iocpObject->Dispatch(iocpEvent, numOfBytes);
+		// listener, session 각 Dispatch 함수 호출
 	} else {
 		int32 errCode = ::WSAGetLastError();
 		switch (errCode) {

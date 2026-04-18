@@ -7,17 +7,25 @@
 #include <Windows.h>
 #include <future>
 #include "ThreadManager.h"
-#include "SocketUtils.h"
-#include "Listener.h"
+
+#include "Service.h"
+#include "Session.h"
+
+class GameSession : public Session
+{
+	// 실제 게임 서버 로직이 돌아갈 세션을 Session 상속받아서 작성 후 사용
+};
 
 int main() {
-	ListenerRef listener = MakeShared<Listener>();
-	listener->StartAccept(NetAddress(L"127.0.0.1", 7777));
+	ServerServiceRef service =
+		MakeShared<ServerService>(NetAddress(L"127.0.0.1", 7777), MakeShared<IocpCore>(), MakeShared<GameSession>, 100);
+	
+	ASSERT_CRASH(service->Start());
 
 	for (int32 i = 0; i < 5; i++) {
 		GThreadManager->Launch([=] {
 			while (true) {
-				GIocpCore.Dispatch();
+				service->GetIocpCore()->Dispatch();
 			}
 		});
 	}
