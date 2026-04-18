@@ -40,6 +40,7 @@ bool Listener::StartAccept(NetAddress netAddr) {
 	const int32 acceptCount = 1;
 	for (int32 i = 0; i < acceptCount; i++) {
 		AcceptEvent* acceptEvent = xnew<AcceptEvent>();
+		acceptEvent->owner = shared_from_this();
 		_acceptEvents.push_back(acceptEvent);
 		RegisterAccept(acceptEvent);
 	}
@@ -56,9 +57,9 @@ HANDLE Listener::GetHandle() {
 }
 
 void Listener::RegisterAccept(AcceptEvent* acceptEvent) {
-	Session* session = xnew<Session>();
+	SessionRef session = MakeShared<Session>();
 	acceptEvent->Init();
-	acceptEvent->SetSession(session);
+	acceptEvent->session = session;
 
 	DWORD bytesRecived = 0;
 	// Client  socket은 미리 만들어서 CP에 올라간 상태
@@ -76,7 +77,7 @@ void Listener::RegisterAccept(AcceptEvent* acceptEvent) {
 }
 
 void Listener::Dispatch(IocpEvent* iocpEvent, int32 numOfBytes) {
-	ASSERT_CRASH(iocpEvent->GetType() == EventType::Accept);
+	ASSERT_CRASH(iocpEvent->eventType == EventType::Accept);
 
 	AcceptEvent* acceptEvent = static_cast<AcceptEvent*>(iocpEvent);
 
@@ -84,7 +85,7 @@ void Listener::Dispatch(IocpEvent* iocpEvent, int32 numOfBytes) {
 }
 
 void Listener::ProcessAccept(AcceptEvent* acceptEvent) {
-	Session* session = acceptEvent->GetSession();
+	SessionRef session = acceptEvent->session;
 
 	// Client socket은 원래 listenSocket의 속성을 그대로 받아야 하는데 AcceptEx에선 이 작업을 해주지 않음
 	// SetUpdateAcceptSocket 함수를 통해 이 작업을 해줌

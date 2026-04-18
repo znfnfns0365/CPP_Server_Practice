@@ -26,10 +26,10 @@ public:
 	// 그러면 맨 처음에 있던 OVERLAPPED 구조체가 사라지게 됨
 
 	void Init();
-	EventType GetType() { return _type; }
 
-protected:
-	EventType _type;
+public:
+	EventType eventType;
+	IocpObjectRef owner;
 };
 
 /*------------------
@@ -51,11 +51,8 @@ class AcceptEvent : public IocpEvent {
 public:
 	AcceptEvent() : IocpEvent(EventType::Accept) {}
 
-	void SetSession(Session* session) { _session = session; }
-	Session* GetSession() { return _session; }
-
-private:
-	Session* _session = nullptr;  // client session
+public:
+	SessionRef session = nullptr;  // client session
 };
 
 /*------------------

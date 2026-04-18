@@ -17,3 +17,8 @@ void xdelete(Type* obj) {
 	obj->~Type();  // 소멸자 직접 호출
 	xxrelease(obj);
 }
+
+template <typename Type, typename... Args>
+shared_ptr<Type> MakeShared(Args&&... args) {
+	return shared_ptr<Type>{xnew<Type>(forward<Args>(args)...), xdelete<Type>};
+}
