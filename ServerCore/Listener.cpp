@@ -111,7 +111,7 @@ void Listener::ProcessAccept(AcceptEvent* acceptEvent) {
 
 	cout << "Client Connected!!" << endl;
 
-	// TODO
+	session->ProcessConnect();
 
 	RegisterAccept(acceptEvent);
 }
