@@ -20,6 +20,7 @@ public:
 
 public:
 	void Send(BYTE* buffer, int32 len);
+	bool Connect();						  // 서버끼리 연결할 때, session이 상대방 서버를 대표, 붙는 작업이 필요
 	void Disconnect(const WCHAR* cause);  // 해킹 의심 등의 이유로 연결 끊기
 
 	shared_ptr<Service> GetService() { return _service.lock(); }
@@ -41,18 +42,20 @@ private:
 
 private:
 	/* 전송 관련 */
-	void RegisterConnect();
+	bool RegisterConnect();
+	bool RegisterDisconnect();
 	void RegisterRecv();
 	void RegisterSend(SendEvent* sendEvent);
 
 	void ProcessConnect();
+	void ProcessDisconnect();
 	void ProcessRecv(int32 numOfBytes);
 	void ProcessSend(SendEvent* sendEvent, int32 numOfBytes);
 
 	void HandleError(int32 errorCode);
 
 protected:
-	/* 컨텐츠 코드에서 오버로딩 */
+	/* 컨텐츠 코드에서 재정의(오버라이딩) */
 	virtual void OnConnected() {}  // 연결 후 로그를 찍거나 헬스 체크 등 가능
 	virtual int32 OnRecv(BYTE* buffer, int32 len) { return len; }
 	virtual void OnSend(int32 len) {}
@@ -82,7 +85,7 @@ private:
 
 private:
 	/* IocpEvent 재사용 */
+	ConnectEvent _connectEvent;
+	DisconnectEvent _disconnectEvent;
 	RecvEvent _recvEvent;
-
-	vector<BYTE> buffer;
 };

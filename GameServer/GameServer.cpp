@@ -1,19 +1,13 @@
-﻿#include "CoreGlobal.h"
-#include "pch.h"
+﻿#include "pch.h"
 #include <iostream>
-#include "CorePch.h"
-#include <atomic>
-#include <mutex>
-#include <Windows.h>
-#include <future>
 #include "ThreadManager.h"
-
 #include "Service.h"
 #include "Session.h"
 
 class GameSession : public Session {
 	// 실제 게임 서버 로직이 돌아갈 세션을 Session 상속받아서 작성 후 사용
 public:
+	~GameSession() { cout << "~GameSession" << endl; }
 	virtual int32 OnRecv(BYTE* buffer, int32 len) override {
 		// Echo
 		cout << "OnRecv Data Len: " << len << endl;

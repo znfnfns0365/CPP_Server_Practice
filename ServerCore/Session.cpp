@@ -1,6 +1,5 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "Session.h"
-#include <winSock2.h>
 #include "SocketUtils.h"
 #include "Service.h"
 
@@ -10,6 +9,8 @@
 
 Session::Session() {
 	_socket = SocketUtils::CreateSocket();
+	// 매번 세션을 만들 때마다 소켓을 만들고, 다시 삭제하는 것은 성능상 부담이 됨
+	// 따라서 소켓을 미리 만들어두고, 세션을 만들 때마다 소켓을 재사용할 수 있음
 }
 
 Session::~Session() {
@@ -31,6 +32,10 @@ void Session::Send(BYTE* buffer, int32 len) {
 	RegisterSend(sendEvent);
 }
 
+bool Session::Connect() {
+	return RegisterConnect();
+}
+
 void Session::Disconnect(const WCHAR* cause) {
 	// 이미 연결 끊어져 있으면 종료
 	if (_connected.exchange(false) == false)
@@ -39,9 +44,10 @@ void Session::Disconnect(const WCHAR* cause) {
 	// TEMP
 	wcout << "Disconnect: " << cause << endl;
 
-	OnDisconnected();  // 컨텐츠 코드에서 오버로딩할 OnDisconnected 호출
-	SocketUtils::Close(_socket);
+	OnDisconnected();  // 컨텐츠 코드에서 재정의(오버라이딩)할 OnDisconnected 호출
 	GetService()->ReleaseSession(GetSessionRef());
+
+	RegisterDisconnect();
 }
 
 HANDLE Session::GetHandle() {
@@ -52,6 +58,9 @@ void Session::Dispatch(IocpEvent* iocpEvent, int32 numOfBytes) {
 	switch (iocpEvent->eventType) {
 		case EventType::Connect:
 			ProcessConnect();
+			break;
+		case EventType::Disconnect:
+			ProcessDisconnect();
 			break;
 		case EventType::Recv:
 			ProcessRecv(numOfBytes);
@@ -65,7 +74,54 @@ void Session::Dispatch(IocpEvent* iocpEvent, int32 numOfBytes) {
 	}
 }
 
-void Session::RegisterConnect() {}
+bool Session::RegisterConnect() {
+	if (IsConnected() == true)
+		return false;
+
+	if (GetService()->GetServiceType() != ServiceType::Client)
+		return false;
+
+	if (SocketUtils::SetReuseAddress(_socket, true) == false)
+		return false;
+
+	if (SocketUtils::BindAnyAddress(_socket, 0 /*남는거*/) == false)
+		return false;
+	// 아무 포트나 IP랑 연동시켜줌
+	// ConnectEx 쓰려면 꼭 필요
+
+	_connectEvent.Init();
+	_connectEvent.owner = shared_from_this();  // ADD_REF
+
+	DWORD numOfBytes = 0;
+	SOCKADDR_IN sockAddr = GetService()->GetNetAddress().GetSockAddr();
+	// Service가 Client 타입이기 때문에 내가 붙어야 하는 서버의 주소가 들어있음
+
+	if (SocketUtils::ConnectEx(_socket, reinterpret_cast<SOCKADDR*>(&sockAddr), sizeof(sockAddr), nullptr, 0,
+							   &numOfBytes, &_connectEvent) == false) {
+		int32 errorCode = ::WSAGetLastError();
+		if (errorCode != WSA_IO_PENDING) {
+			_connectEvent.owner = nullptr;	// RELEASE_REF
+			return false;
+		}
+	}
+
+	return true;
+}
+
+bool Session::RegisterDisconnect() {
+	_disconnectEvent.Init();
+	_disconnectEvent.owner = shared_from_this();  // ADD_REF
+
+	// TF_REUSE_SOCKET: 소켓을 닫지 않고 재사용할 수 있도록 함
+	if (false == SocketUtils::DisconnectEx(_socket, &_disconnectEvent, TF_REUSE_SOCKET, 0)) {
+		int32 errorCode = ::WSAGetLastError();
+		if (errorCode != WSA_IO_PENDING) {
+			_disconnectEvent.owner = nullptr;  // RELEASE_REF
+			return false;
+		}
+	}
+	return true;
+}
 
 void Session::RegisterRecv() {
 	if (IsConnected() == false)
@@ -117,19 +173,27 @@ void Session::RegisterSend(SendEvent* sendEvent) {
 	}
 }
 
+// 원래 Client가 현재 서버로 붙을 때 세션 등록, 수신 등록, 송신 등록 할 때 사용
+// 현재 서버가 Client 입장으로 다른 서버에 붙어서 Connect 됐을 때도 공용으로 사용
 void Session::ProcessConnect() {
+	_connectEvent.owner = nullptr;	// RELEASE_REF
+
 	_connected.store(true);
 
 	// 세션 등록
 	GetService()->AddSession(GetSessionRef());
 
-	// 컨텐츠 코드에서 오버로딩할 OnConnected 호출
+	// 컨텐츠 코드에서 재정의(오버라이딩)할 OnConnected 호출
 	OnConnected();
 
 	// 수신 등록 (낚시대 던지기)
 	RegisterRecv();
 
 	// 송신 등록
+}
+
+void Session::ProcessDisconnect() {
+	_disconnectEvent.owner = nullptr;  // RELEASE_REF
 }
 
 void Session::ProcessRecv(int32 numOfBytes) {
@@ -140,7 +204,7 @@ void Session::ProcessRecv(int32 numOfBytes) {
 		return;
 	}
 
-	// 컨텐츠 코드에서 오버로딩할 OnRecv 호출
+	// 컨텐츠 코드에서 재정의(오버라이딩)할 OnRecv 호출
 	OnRecv(_recvBuffer, numOfBytes);
 
 	// 다시 수신 등록 (낚시대 다시 던지기)
@@ -158,7 +222,7 @@ void Session::ProcessSend(SendEvent* sendEvent, int32 numOfBytes) {
 		return;
 	}
 
-	// 컨텐츠 코드에서 오버로딩할 OnSend 호출
+	// 컨텐츠 코드에서 재정의(오버라이딩)할 OnSend 호출
 	OnSend(numOfBytes);
 }
 

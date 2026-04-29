@@ -4,6 +4,7 @@
 
 enum class EventType : uint8 {
 	Connect,
+	Disconnect,
 	Accept,
 	// PreRecv, // 0 byte recv
 	Recv,
@@ -39,6 +40,17 @@ public:
 class ConnectEvent : public IocpEvent {
 public:
 	ConnectEvent() : IocpEvent(EventType::Connect) {}
+
+private:
+};
+
+/*------------------
+	DisconnectEvent
+-------------------*/
+
+class DisconnectEvent : public IocpEvent {
+public:
+	DisconnectEvent() : IocpEvent(EventType::Disconnect) {}
 
 private:
 };
