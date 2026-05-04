@@ -69,7 +69,8 @@ void Listener::RegisterAccept(AcceptEvent* acceptEvent) {
 	DWORD bytesRecived = 0;
 	// Client  socket은 미리 만들어서 CP에 올라간 상태
 	// AcceptEx 이후 어떤 클라가 접속 시도 하면 IocpCore::Dispatch에서 반응 -> IocpObject::Dispatch(Listener::Dispatch)
-	if (false == SocketUtils::AcceptEx(_socket, session->GetSocket(), session->_recvBuffer, 0, sizeof(SOCKADDR_IN) + 16,
+	if (false == SocketUtils::AcceptEx(_socket, session->GetSocket(), session->_recvBuffer.WritePos(), 0,
+									   sizeof(SOCKADDR_IN) + 16,
 									   sizeof(SOCKADDR_IN) + 16, OUT & bytesRecived,
 									   static_cast<LPOVERLAPPED>(acceptEvent))) {
 		const int32 errorCode = ::WSAGetLastError();

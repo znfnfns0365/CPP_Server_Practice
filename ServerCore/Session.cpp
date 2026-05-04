@@ -7,7 +7,7 @@
 	Session
 --------------------*/
 
-Session::Session() {
+Session::Session(): _recvBuffer(BUFFER_SIZE) {
 	_socket = SocketUtils::CreateSocket();
 	// 매번 세션을 만들 때마다 소켓을 만들고, 다시 삭제하는 것은 성능상 부담이 됨
 	// 따라서 소켓을 미리 만들어두고, 세션을 만들 때마다 소켓을 재사용할 수 있음
@@ -132,8 +132,8 @@ void Session::RegisterRecv() {
 	// ADD_REF해서 WSARecv에 등록한 뒤로 절대 삭제되지 않게 함
 
 	WSABUF wsaBuf;
-	wsaBuf.buf = reinterpret_cast<char*>(_recvBuffer);
-	wsaBuf.len = len32(_recvBuffer);
+	wsaBuf.buf = reinterpret_cast<char*>(_recvBuffer.WritePos());
+	wsaBuf.len = _recvBuffer.FreeSize();
 
 	DWORD numOfBytes = 0;
 	DWORD flags = 0;
@@ -173,8 +173,8 @@ void Session::RegisterSend(SendEvent* sendEvent) {
 	}
 }
 
-// 원래 Client가 현재 서버로 붙을 때 세션 등록, 수신 등록, 송신 등록 할 때 사용
-// 현재 서버가 Client 입장으로 다른 서버에 붙어서 Connect 됐을 때도 공용으로 사용
+// 원래 Client 입장에서 서버로 연결 시도할 때 세션 등록, 수신 등록, 송신 등록 할 때 사용
+// 현재 서버가 Client 입장으로 다른 서버에 Connect 시도할 때도 공용으로 사용
 void Session::ProcessConnect() {
 	_connectEvent.owner = nullptr;	// RELEASE_REF
 
@@ -204,8 +204,25 @@ void Session::ProcessRecv(int32 numOfBytes) {
 		return;
 	}
 
+	// _writePos를 numOfBytes만큼 뒤로 밈
+	if (_recvBuffer.OnWrite(numOfBytes) == false)
+	{
+		Disconnect(L"OnWrite Overflow");
+		return;
+	}
+
+	
+	int32 dataSize = _recvBuffer.DataSize(); // 입력된 데이터 사이즈
 	// 컨텐츠 코드에서 재정의(오버라이딩)할 OnRecv 호출
-	OnRecv(_recvBuffer, numOfBytes);
+	int32 processLen = OnRecv(_recvBuffer.ReadPos(), dataSize); // 실제 처리한 data length를 반환
+	if (processLen < 0 || dataSize < processLen || _recvBuffer.OnRead(processLen) == false) // processLen만큼 _readPos를 뒤로 밈
+	{
+		Disconnect(L"OnRead Overflow");
+		return;
+	}
+
+	// 커서 정리 (동일하면 0으로 이동)
+	_recvBuffer.Clean();
 
 	// 다시 수신 등록 (낚시대 다시 던지기)
 	RegisterRecv();
