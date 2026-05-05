@@ -86,8 +86,10 @@ class SendEvent : public IocpEvent {
 public:
 	SendEvent() : IocpEvent(EventType::Send) {}
 
-	// TEMP
-	vector<BYTE> buffer;
+	Vector<SendBufferRef> sendBuffers;
+	// queue(_sendQueue)에서 데이터를 빼내는 순간
+	// Ref Count가 사라지는 오류를 방지하는 동시에
+	// "WSASend완료 시점까지 보존용 Vector"
 
 private:
 };

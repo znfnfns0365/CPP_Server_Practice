@@ -7,7 +7,7 @@
 	Session
 --------------------*/
 
-Session::Session(): _recvBuffer(BUFFER_SIZE) {
+Session::Session() : _recvBuffer(BUFFER_SIZE) {
 	_socket = SocketUtils::CreateSocket();
 	// 매번 세션을 만들 때마다 소켓을 만들고, 다시 삭제하는 것은 성능상 부담이 됨
 	// 따라서 소켓을 미리 만들어두고, 세션을 만들 때마다 소켓을 재사용할 수 있음
@@ -17,19 +17,15 @@ Session::~Session() {
 	SocketUtils::Close(_socket);
 }
 
-void Session::Send(BYTE* buffer, int32 len) {
-	// 생각할 문제
-	// 1) 버퍼 관리
-	// 2) sendEvent 관리? 단일 or 여러 개(WSASend) 중첩?
-
-	// TEMP
-	SendEvent* sendEvent = xnew<SendEvent>();
-	sendEvent->owner = shared_from_this();	// ADD_REF
-	sendEvent->buffer.resize(len);
-	::memcpy(sendEvent->buffer.data(), buffer, len);
-
+void Session::Send(SendBufferRef sendBuffer) {
+	// 현재 RegisterSend가 걸리지 않은 상태라면, 걸어줌
+	// RegisterSend를 하나만 거는 이유: 최대한 뭉쳐서 보낼 수 있음
 	WRITE_LOCK;
-	RegisterSend(sendEvent);
+
+	_sendQueue.push(sendBuffer);
+	// RegisterSend가 걸려있는 상태라면 sendBuffer에 넣으려 하지 않고(RegisterSend 호출 대신) sendQueue에 보관
+	if (_sendRegistered.exchange(true) == false)
+		RegisterSend();
 }
 
 bool Session::Connect() {
@@ -66,7 +62,7 @@ void Session::Dispatch(IocpEvent* iocpEvent, int32 numOfBytes) {
 			ProcessRecv(numOfBytes);
 			break;
 		case EventType::Send:
-			ProcessSend(static_cast<SendEvent*>(iocpEvent), numOfBytes);
+			ProcessSend(numOfBytes);
 			break;
 		default:
 			ASSERT_CRASH("Invalid event type");
@@ -147,28 +143,60 @@ void Session::RegisterRecv() {
 	}
 }
 
-void Session::RegisterSend(SendEvent* sendEvent) {
+void Session::RegisterSend() {
 	if (IsConnected() == false)
 		return;
 
-	WSABUF wsaBuf;
-	wsaBuf.buf = (char*)sendEvent->buffer.data();
-	wsaBuf.len = (ULONG)sendEvent->buffer.size();
+	_sendEvent.Init();
+	_sendEvent.owner = shared_from_this();	// ADD_REF
+
+	// 보낼 데이터를 sendEvent에 등록
+	{
+		WRITE_LOCK;
+		// 또 Lock을 잡는 이유: 나중에 경우에 따라서 Send에서 Lock을 안 잡고 호출할 수도 있어서 이중으로 확인
+		// Lock.cpp 보면 재귀적 Lock을 구현해서 같은 스레드라면 또 다시 잡을 수 있게 함
+
+		int32 writeSize = 0;
+		while (_sendQueue.empty() == false) {
+			SendBufferRef sendBuffer = _sendQueue.front();
+
+			writeSize += sendBuffer->WriteSize();
+			// TODO: writeSize가 너무 크면 오류 발생
+
+			_sendQueue.pop();
+			_sendEvent.sendBuffers.push_back(sendBuffer);
+		}
+	}
+
+	// _sendQueue: "보내려고 줄 서 있는 데이터"
+	// _sendEvent.sendBuffers: "지금 OS가 보내고 있는 중이라서, 절대로 메모리에서 사라지면 안 되는 데이터 (인질)"
+	// wsaBufs: "OS에게 알려주기 위한 주소록"
+
+	// Scatter-Gather (흩어져 있는 데이터들을 모아서 한 번에 보내는 기법)
+	Vector<WSABUF> wsaBufs;
+	wsaBufs.reserve(_sendEvent.sendBuffers.size());
+	for (SendBufferRef sendBuffer : _sendEvent.sendBuffers) {
+		WSABUF wsaBuf;
+		wsaBuf.buf = reinterpret_cast<char*>(sendBuffer->Buffer());
+		wsaBuf.len = static_cast<LONG>(sendBuffer->WriteSize());
+		wsaBufs.push_back(wsaBuf);
+	}
 	// 복사에 cost가 들어감
 
 	DWORD numOfBytes = 0;
 	// WSASend는 thread safe하지 않음
 	// 따라서 락을 걸어서 동시성 문제를 해결해야 함
 	// (Session::Send 함수에서 RegisterSend 함수 호출 전에 락을 걸어서 해결)
-	if (SOCKET_ERROR == ::WSASend(_socket, &wsaBuf, 1, OUT & numOfBytes, 0, sendEvent, nullptr)) {
+	if (SOCKET_ERROR == ::WSASend(_socket, wsaBufs.data(), static_cast<DWORD>(wsaBufs.size()), OUT & numOfBytes, 0,
+								  &_sendEvent, nullptr)) {
 		// 매번 1개씩 보내기 때문에 성능이 떨어짐
 		// 스캐터 개더 패턴을 활용해서 해결해야 함
 		int32 errorCode = ::WSAGetLastError();
 		if (errorCode != WSA_IO_PENDING) {
 			HandleError(errorCode);
-			sendEvent->owner = nullptr;	 // RELEASE_REF
-			xdelete(sendEvent);
-			return;
+			_sendEvent.owner = nullptr;		 // RELEASE_REF
+			_sendEvent.sendBuffers.clear();	 // RELEASE_REF
+			_sendRegistered.store(false);
 		}
 	}
 }
@@ -205,17 +233,16 @@ void Session::ProcessRecv(int32 numOfBytes) {
 	}
 
 	// _writePos를 numOfBytes만큼 뒤로 밈
-	if (_recvBuffer.OnWrite(numOfBytes) == false)
-	{
+	if (_recvBuffer.OnWrite(numOfBytes) == false) {
 		Disconnect(L"OnWrite Overflow");
 		return;
 	}
 
-	
-	int32 dataSize = _recvBuffer.DataSize(); // 입력된 데이터 사이즈
+	int32 dataSize = _recvBuffer.DataSize();  // 입력된 데이터 사이즈
 	// 컨텐츠 코드에서 재정의(오버라이딩)할 OnRecv 호출
-	int32 processLen = OnRecv(_recvBuffer.ReadPos(), dataSize); // 실제 처리한 data length를 반환
-	if (processLen < 0 || dataSize < processLen || _recvBuffer.OnRead(processLen) == false) // processLen만큼 _readPos를 뒤로 밈
+	int32 processLen = OnRecv(_recvBuffer.ReadPos(), dataSize);	 // 실제 처리한 data length를 반환
+	if (processLen < 0 || dataSize < processLen ||
+		_recvBuffer.OnRead(processLen) == false)  // processLen만큼 _readPos를 뒤로 밈
 	{
 		Disconnect(L"OnRead Overflow");
 		return;
@@ -228,11 +255,11 @@ void Session::ProcessRecv(int32 numOfBytes) {
 	RegisterRecv();
 }
 
-void Session::ProcessSend(SendEvent* sendEvent, int32 numOfBytes) {
+void Session::ProcessSend(int32 numOfBytes) {
 	// Completion Port(Queue)까진 순서대로 끝나지만 IocpCore::Dispatch에서
 	// ProcessSend를 호출하는 부분에서는 순서가 보장되지 않음
-	sendEvent->owner = nullptr;	 // RELEASE_REF
-	xdelete(sendEvent);
+	_sendEvent.owner = nullptr;		 // RELEASE_REF
+	_sendEvent.sendBuffers.clear();	 // RELEASE_REF
 
 	if (numOfBytes == 0) {
 		Disconnect(L"Send 0 byte");
@@ -241,6 +268,15 @@ void Session::ProcessSend(SendEvent* sendEvent, int32 numOfBytes) {
 
 	// 컨텐츠 코드에서 재정의(오버라이딩)할 OnSend 호출
 	OnSend(numOfBytes);
+
+	WRITE_LOCK;
+	if (_sendQueue.empty()) {
+		// 완료됐으면 다음 Send가 호출됐을 때, RegisterSend를 호출할 수 있게끔 _sendRegistered를 false로 변경
+		_sendRegistered.store(false);
+	} else {
+		// WSASend 후에 Send를 호출하여 sendQueue에 보낼 데이터가 찾다면 바로 RegisterSend 호출
+		RegisterSend();
+	}
 }
 
 void Session::HandleError(int32 errorCode) {
