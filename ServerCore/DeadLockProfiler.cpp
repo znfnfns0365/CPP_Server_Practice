@@ -25,12 +25,12 @@ void DeadLockProfiler::PushLock(const char* name)
 	}
 
 	// 잡고 있는 락이 있다면
-	if (_lockStack.empty() == false)
+	if (LLockStack.empty() == false)
 	{
 		// 현재 구현한 RW Lock이 재귀적 락을 허용하는 중임
 		// 재귀적 락 상황이면 의미가 없기 때문에 그냥 넘어감
 		// (새로운 간선이 아니라 A -> A 같은 본인 노드로 돌아오는 간선)
-		const int32 prevId = _lockStack.top();
+		const int32 prevId = LLockStack.top();
 		// 여기서 prevId는 본인 스레드가 걸었던 이전 lock을 가져와야 함
 		// 본 코드에선 _lockStack을 DeadLockProfiler에서 한꺼번에 관리하기 때문에
 		// 다른 스레드가 걸었던 lock을 본인이 걸었던 이전 lock이라고 착각하고 이상한 간선을 만들게 됨
@@ -49,21 +49,21 @@ void DeadLockProfiler::PushLock(const char* name)
 		}
 	}
 
-	_lockStack.push(lockId);
+	LLockStack.push(lockId);
 }
 
 void DeadLockProfiler::PopLock(const char* name)
 {
 	LockGuard guard(_lock);
 	
-	if (_lockStack.empty()) // 혹시 모를 스택 비어있을 에러 예방
+	if (LLockStack.empty()) // 혹시 모를 스택 비어있을 에러 예방
 		CRASH("MULTIPLE_UNLOCK");
 
 	int32 lockId = _nameToId[name];
-	if (_lockStack.top() != lockId) // 혹시 모를 스택 push 에러 예방
+	if (LLockStack.top() != lockId) // 혹시 모를 스택 push 에러 예방
 		CRASH("INVALID_UNLOCK");
 
-	_lockStack.pop();
+	LLockStack.pop();
 }
 
 void DeadLockProfiler::CheckCycle()
