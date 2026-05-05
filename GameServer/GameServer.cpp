@@ -3,20 +3,7 @@
 #include "ThreadManager.h"
 #include "Service.h"
 #include "Session.h"
-
-class GameSession : public Session {
-	// 실제 게임 서버 로직이 돌아갈 세션을 Session 상속받아서 작성 후 사용
-public:
-	~GameSession() { cout << "~GameSession" << endl; }
-	virtual int32 OnRecv(BYTE* buffer, int32 len) override {
-		// Echo
-		cout << "OnRecv Data Len: " << len << endl;
-		Send(buffer, len);
-		return len;	 // len 반환 이유는 나중에 설명
-	}
-
-	virtual void OnSend(int32 len) override { cout << "OnSend Data Len: " << len << endl; }
-};
+#include "GameSession.h"
 
 int main() {
 	ServerServiceRef service =
