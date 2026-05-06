@@ -16,6 +16,7 @@ using uint64 = unsigned __int64;
 using IocpCoreRef = std::shared_ptr<class IocpCore>;
 using IocpObjectRef = std::shared_ptr<class IocpObject>;
 using SessionRef = std::shared_ptr<class Session>;
+using PacketSessionRef = std::shared_ptr<class PacketSession>;
 using ListenerRef = std::shared_ptr<class Listener>;
 using ServerServiceRef = std::shared_ptr<class ServerService>;
 using ClientServiceRef = std::shared_ptr<class ClientService>;

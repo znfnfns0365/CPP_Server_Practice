@@ -95,3 +95,29 @@ private:
 	RecvEvent _recvEvent;
 	SendEvent _sendEvent;
 };
+
+/*--------------------
+	PacketSession
+--------------------*/
+// TCP 특성상 패킷이 모두 도착했다는 보장을 할 수가 없어서 이를 처리하는 세션
+
+struct PacketHeader {
+	uint16 size;
+	uint16 id;
+};
+
+// [size(2Byte)][id(2Byte)][data...]
+// size: 패킷 전체 크기 (header + data)
+// id: 프로토콜 ID (ex. 1=로그인, 2=회원가입)
+
+class PacketSession : public Session {
+public:
+	PacketSession();
+	virtual ~PacketSession();
+
+	PacketSessionRef GetPacketSessionRef() { return static_pointer_cast<PacketSession>(shared_from_this()); }
+
+protected:
+	virtual int32 OnRecv(BYTE* buffer, int32 len) final;
+	virtual int32 OnRecvPacket(BYTE* buffer, int32 len) abstract;
+};

@@ -1,9 +1,10 @@
-﻿#include "pch.h"
+#include "pch.h"
 #include <iostream>
 #include "ThreadManager.h"
 #include "Service.h"
 #include "Session.h"
 #include "GameSession.h"
+#include "GameSessionManager.h"
 
 int main() {
 	ServerServiceRef service =
@@ -17,6 +18,27 @@ int main() {
 				service->GetIocpCore()->Dispatch();
 			}
 		});
+	}
+
+	char sendData[] = "Hello World";
+
+	while (true)
+	{
+		SendBufferRef sendBuffer = MakeShared<SendBuffer>(4096);
+
+		const int32 headerSize = sizeof(PacketHeader);
+		const int32 packetLen = headerSize + sizeof(sendData);
+
+		BYTE packet[packetLen];
+		PacketHeader header{};
+		header.size = static_cast<uint16>(packetLen);
+		header.id = 1;  // 1: Hello Msg
+		::memcpy(packet, &header, headerSize);
+		::memcpy(packet + headerSize, sendData, sizeof(sendData));
+		sendBuffer->CopyData(packet, packetLen);
+
+		GSessionManager.Broadcast(sendBuffer);
+		this_thread::sleep_for(250ms);
 	}
 
 	GThreadManager->Join();

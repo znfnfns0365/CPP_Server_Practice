@@ -18,13 +18,21 @@ Session::~Session() {
 }
 
 void Session::Send(SendBufferRef sendBuffer) {
+	if (IsConnected() == false)
+		return;
+
 	// 현재 RegisterSend가 걸리지 않은 상태라면, 걸어줌
 	// RegisterSend를 하나만 거는 이유: 최대한 뭉쳐서 보낼 수 있음
-	WRITE_LOCK;
+	bool registerSend = false;
+	{
+		WRITE_LOCK;
 
-	_sendQueue.push(sendBuffer);
-	// RegisterSend가 걸려있는 상태라면 sendBuffer에 넣으려 하지 않고(RegisterSend 호출 대신) sendQueue에 보관
-	if (_sendRegistered.exchange(true) == false)
+		_sendQueue.push(sendBuffer);
+		// RegisterSend가 걸려있는 상태라면 sendBuffer에 넣으려 하지 않고(RegisterSend 호출 대신) sendQueue에 보관
+		if (_sendRegistered.exchange(true) == false)
+			registerSend = true;
+	}
+	if (registerSend)
 		RegisterSend();
 }
 
@@ -39,9 +47,6 @@ void Session::Disconnect(const WCHAR* cause) {
 
 	// TEMP
 	wcout << "Disconnect: " << cause << endl;
-
-	OnDisconnected();  // 컨텐츠 코드에서 재정의(오버라이딩)할 OnDisconnected 호출
-	GetService()->ReleaseSession(GetSessionRef());
 
 	RegisterDisconnect();
 }
@@ -222,6 +227,9 @@ void Session::ProcessConnect() {
 
 void Session::ProcessDisconnect() {
 	_disconnectEvent.owner = nullptr;  // RELEASE_REF
+
+	OnDisconnected();  // 컨텐츠 코드에서 재정의(오버라이딩)할 OnDisconnected 호출
+	GetService()->ReleaseSession(GetSessionRef());
 }
 
 void Session::ProcessRecv(int32 numOfBytes) {
@@ -290,4 +298,33 @@ void Session::HandleError(int32 errorCode) {
 			cout << "Handle Error: " << errorCode << endl;
 			break;
 	}
+}
+
+/*--------------------
+	PacketSession
+--------------------*/
+
+PacketSession::PacketSession() {}
+
+PacketSession::~PacketSession() {}
+
+int32 PacketSession::OnRecv(BYTE* buffer, int32 len) {
+	int32 processLen = 0;
+	while (true) {
+		int32 dataSize = len - processLen;
+		// 최소한 헤더는 파싱할 수 있는지
+		if (dataSize < sizeof(PacketHeader))
+			break;
+
+		PacketHeader header = *(reinterpret_cast<PacketHeader*>(&buffer[processLen]));
+		// 헤더에 기록된 패킷 크기를 파싱할 수 있는지
+		if (dataSize < header.size)
+			break;
+
+		// 패킷 조립 성공
+		OnRecvPacket(&buffer[processLen], header.size);
+
+		processLen += header.size;
+	}
+	return processLen;
 }
