@@ -5,6 +5,7 @@
 #include "Session.h"
 #include "GameSession.h"
 #include "GameSessionManager.h"
+#include "BufferWriter.h"
 
 int main() {
 	ServerServiceRef service =
@@ -26,16 +27,18 @@ int main() {
 	{
 		SendBufferRef sendBuffer = MakeShared<SendBuffer>(4096);
 
-		const int32 headerSize = sizeof(PacketHeader);
-		const int32 packetLen = headerSize + sizeof(sendData);
+		BufferWriter bw(sendBuffer->Buffer(), 4096);
 
-		BYTE packet[packetLen];
-		PacketHeader header{};
-		header.size = static_cast<uint16>(packetLen);
-		header.id = 1;  // 1: Hello Msg
-		::memcpy(packet, &header, headerSize);
-		::memcpy(packet + headerSize, sendData, sizeof(sendData));
-		sendBuffer->CopyData(packet, packetLen);
+		// Reserve로 header가 들어갈 공간 미리 확보
+		PacketHeader* header = bw.Reserve<PacketHeader>();
+
+		// id(uint64), 체력(uint32), 공격력(uint16)
+		bw << (uint64)1001 << (uint32)100 << (uint16)10;
+		bw.Write(sendData, sizeof(sendData));
+		sendBuffer->SetWriteSize(bw.WriteSize());
+		
+		header->size = bw.WriteSize();
+		header->id = 1;  // 1: Test Msg
 
 		GSessionManager.Broadcast(sendBuffer);
 		this_thread::sleep_for(250ms);
