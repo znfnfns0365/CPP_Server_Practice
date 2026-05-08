@@ -25,9 +25,6 @@ public:
 	T* Reserve();
 
 	template <typename T>
-	BufferWriter& operator<<(const T& src);
-
-	template <typename T>
 	BufferWriter& operator<<(T&& src);
 	// <<로 데이터를 밀어넣는 연산자 만듬
 
@@ -48,16 +45,13 @@ T* BufferWriter::Reserve() {
 }
 
 template <typename T>
-BufferWriter& BufferWriter::operator<<(const T& src) {
-	*reinterpret_cast<T*>(&_buffer[_pos]) = src;
-	// ::memcpy 써도 됨
-	_pos += sizeof(T);
-	return *this;
-}
-
-template <typename T>
 BufferWriter& BufferWriter::operator<<(T&& src) {
-	*reinterpret_cast<T*>(&_buffer[_pos]) = std::move(src);
+	using DataType=std::remove_reference_t<T>;
+	// Type에서 reference를 빼는 명령어
+	// const int& -> const int
+	*reinterpret_cast<DataType*>(&_buffer[_pos]) = std::forward<DataType>(src);
+	// 참조에 대한 포인터는 존재할 수 없음
+	// 원래 코드에선 reinterPret_cast<uint32&*> 이런식으로 들어가서 에러가 남
 	_pos += sizeof(T);
 	return *this;
 }

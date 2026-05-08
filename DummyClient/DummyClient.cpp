@@ -3,6 +3,7 @@
 #include "Service.h"
 #include "Session.h"
 #include "BufferReader.h"
+#include "ClientPacketHandler.h"
 
 char sendData[] = "Hello World";
 
@@ -15,26 +16,8 @@ public:
 		//cout << "Connected To Server" << endl;
 
 	}
-	virtual int32 OnRecvPacket(BYTE* buffer, int32 len) override {
-		BufferReader br(buffer, len);
-
-		PacketHeader header;
-		br >> header;
-
-		uint64 id;
-		uint32 hp;
-		uint16 attack;
-		br >> id >> hp >> attack;
-
-		cout << "ID: " << id << "HP: " << hp << "ATT: " << attack << endl;
-		
-		// Temp
-		char recvBuffer[4096];
-		br.Read(recvBuffer, header.size - sizeof(PacketHeader) - 8 - 4 - 2); 
-		// 가변 길이(id, hp, att)는 나중에 패킷 설계에서 고민해줘야 함
-		cout << recvBuffer << endl;
-
-		return len;	 // len 반환 이유는 나중에 설명
+	virtual void OnRecvPacket(BYTE* buffer, int32 len) override {
+		ClientPacketHandler::HandlePacket(buffer, len);
 	}
 
 	virtual void OnSend(int32 len) override { 
@@ -51,7 +34,7 @@ int main() {
 
 	// 5개의 세션을 생성하고, 서버에 연결
 	ClientServiceRef service =
-		MakeShared<ClientService>(NetAddress(L"127.0.0.1", 7777), MakeShared<IocpCore>(), MakeShared<ServerSession>, 1000);
+		MakeShared<ClientService>(NetAddress(L"127.0.0.1", 7777), MakeShared<IocpCore>(), MakeShared<ServerSession>, 1);
 	ASSERT_CRASH(service->Start());
 
 	for (int32 i = 0; i < 2; i++) {

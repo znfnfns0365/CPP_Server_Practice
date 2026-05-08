@@ -6,6 +6,7 @@
 #include "GameSession.h"
 #include "GameSessionManager.h"
 #include "BufferWriter.h"
+#include "ServerPacketHandler.h"
 
 int main() {
 	ServerServiceRef service =
@@ -25,22 +26,10 @@ int main() {
 
 	while (true)
 	{
-		SendBufferRef sendBuffer = MakeShared<SendBuffer>(4096);
-
-		BufferWriter bw(sendBuffer->Buffer(), 4096);
-
-		// Reserve로 header가 들어갈 공간 미리 확보
-		PacketHeader* header = bw.Reserve<PacketHeader>();
-
-		// id(uint64), 체력(uint32), 공격력(uint16)
-		bw << (uint64)1001 << (uint32)100 << (uint16)10;
-		bw.Write(sendData, sizeof(sendData));
-		sendBuffer->SetWriteSize(bw.WriteSize());
-		
-		header->size = bw.WriteSize();
-		header->id = 1;  // 1: Test Msg
-
+		vector<BuffData> buffs{BuffData{100, 1.2f}, BuffData{200, 3.4}, BuffData{300, 1.9}};
+		SendBufferRef sendBuffer = ServerPacketHandler::Make_S_TEST(1001, 100, 10, buffs);
 		GSessionManager.Broadcast(sendBuffer);
+
 		this_thread::sleep_for(250ms);
 	}
 
